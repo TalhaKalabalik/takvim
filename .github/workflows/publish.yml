@@ -1,10 +1,9 @@
 name: Publish
 
 on:
-  push:
-  pull_request:
-  schedule:
-    - cron: "0 0 * * *"
+  release:
+    types:
+      - published
 
 jobs:
   release_zip_file:
