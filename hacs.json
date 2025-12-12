@@ -1,6 +1,6 @@
 {
     "name": "Takvim (takvim)",
-    "homeassistant": "2023.8",
+    "homeassistant": "2025.12",
     "zip_release": true,
     "filename": "takvim.zip"
   }
