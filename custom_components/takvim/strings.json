@@ -1,19 +1,18 @@
 {
   "config": {
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+      "already_configured": "Diese Stadt ist bereits eingerichtet."
     },
     "error": {
-      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
-      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-      "unknown": "[%key:common::config_flow::error::unknown%]"
+      "cannot_connect": "Die Verbindung zum Fazilet-Takvim-Dienst ist fehlgeschlagen.",
+      "invalid_city": "Bitte wähle eine gültige Stadt aus der Liste."
     },
     "step": {
       "user": {
+        "title": "Stadt auswählen",
+        "description": "Wähle die Stadt aus, für die Gebetszeiten geladen werden sollen.",
         "data": {
-          "host": "[%key:common::config_flow::data::host%]",
-          "password": "[%key:common::config_flow::data::password%]",
-          "username": "[%key:common::config_flow::data::username%]"
+          "district_id": "Stadt"
         }
       }
     }
