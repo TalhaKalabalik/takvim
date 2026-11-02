@@ -9,17 +9,26 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import API_URL, DOMAIN
+from .const import API_URL, DOMAIN, PRAYERS
 
 _LOGGER = logging.getLogger(__name__)
+_LOCAL_TIME_ZONE = ZoneInfo("Europe/Berlin")
 
 
 class PrayerTimesCoordinator(DataUpdateCoordinator):
     """Coordinator for retrieving Takvim prayer times."""
 
-    def __init__(self, hass, district_id):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        district_id: int,
+    ) -> None:
         """Initialize the coordinator."""
         self.district_id = district_id
 
@@ -27,53 +36,67 @@ class PrayerTimesCoordinator(DataUpdateCoordinator):
             hass,
             logger=_LOGGER,
             name=DOMAIN,
+            config_entry=config_entry,
             update_interval=timedelta(hours=12),
         )
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict[str, datetime]:
         """Fetch prayer time data from the API."""
-        url = f"{API_URL}?districtId={self.district_id}&lang=1"
-        _LOGGER.debug("URL: %s", url)
+        session = async_get_clientsession(self.hass)
 
         try:
-            async with (
-                asyncio.timeout(10),
-                aiohttp.ClientSession() as session,
-                session.get(url) as resp,
-            ):
-                data = await resp.json()
+            async with asyncio.timeout(10):
+                async with session.get(
+                    API_URL,
+                    params={"districtId": self.district_id, "lang": 1},
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
 
-            _LOGGER.debug("JSON: %s", data)
+            if not isinstance(data, dict):
+                raise ValueError("The API response is not an object")
 
-            # Logik bleibt unverändert
+            days = data.get("vakitler")
+            if not isinstance(days, list):
+                raise ValueError("The API response does not contain prayer days")
+
+            today = datetime.now(_LOCAL_TIME_ZONE).date().isoformat()
+            day_data = next(
+                (
+                    day
+                    for day in days
+                    if isinstance(day, dict) and day.get("tarih") == today
+                ),
+                None,
+            )
+
+            if day_data is None:
+                raise UpdateFailed(f"No prayer times found for {today}")
+
             result = {
-                "sabah": self._make_timestamp(
-                    data.get("vakitler")[1].get("sabah")[0].get("tarih")
-                ),
-                "ogle": self._make_timestamp(
-                    data.get("vakitler")[1].get("ogle")[0].get("tarih")
-                ),
-                "ikindi": self._make_timestamp(
-                    data.get("vakitler")[1].get("ikindi")[0].get("tarih")
-                ),
-                "aksam": self._make_timestamp(
-                    data.get("vakitler")[1].get("aksam")[0].get("tarih")
-                ),
-                "yatsi": self._make_timestamp(
-                    data.get("vakitler")[1].get("yatsi")[0].get("tarih")
-                ),
+                prayer: self._make_timestamp(day_data[prayer][0]["tarih"])
+                for prayer in PRAYERS
             }
 
-            _LOGGER.debug("result: %s", result)
-
-        except aiohttp.ClientError as err:
+        except UpdateFailed:
+            raise
+        except (
+            TimeoutError,
+            aiohttp.ClientError,
+            KeyError,
+            IndexError,
+            TypeError,
+            ValueError,
+        ) as err:
             raise UpdateFailed(f"Error fetching prayer times: {err}") from err
 
-        else:
-            return result
+        _LOGGER.debug("Prayer times for %s: %s", today, result)
+        return result
 
     def _make_timestamp(self, time_string: str) -> datetime:
-        """Convert API ISO timestamp to Europe/Berlin timezone."""
+        """Convert an API ISO timestamp to a timezone-aware datetime."""
+        if not isinstance(time_string, str):
+            raise ValueError("The prayer time is not a string")
+
         clean = time_string.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(clean)
-        return dt.astimezone(ZoneInfo("Europe/Berlin"))
+        return datetime.fromisoformat(clean)
